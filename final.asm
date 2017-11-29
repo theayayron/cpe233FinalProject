@@ -1,15 +1,7 @@
 ;---------------------------------------------------------------------
-; An expanded "draw_dot" program that includes subrountines to draw
-; vertical lines, horizontal lines, and a full background. 
-; 
-; As written, this programs does the following: 
-;   1) draws a the background blue (draws all the tiles)
-;   2) draws a red dot
-;   3) draws a red horizontal lines
-;   4) draws a red vertical line
+; Conway's Game of Life 
 ;
-; Author: SHANE KENT
-; Modifications: SHANE KENT
+; Author: Caitlin Settles and Aaron Kawahara
 ;---------------------------------------------------------------------
 
 .CSEG
@@ -52,9 +44,10 @@
 ;r6 is used for color
 ;r7 is used for Y
 ;r8 is used for X
+;r0 is used for pixelValue
 
 ;---------------------------------------------------------------------
-init:	  SEI
+init:   SEI
         CALL   draw_background         ; draw using default color
 start_loop:
         MOV    r7, 0x00                ; generic Y coordinate
@@ -62,8 +55,8 @@ start_loop:
 loop_row:
         MOV    r8,0x00                 ; restart x coordinates
 loop_col:
-        ADD    r8,0x01                 ; increment column count
         CALL   start_game
+        ADD    r8,0x01                 ; increment column count
         CMP    r8,0x28                 ; check column is still under 40 (0x28)
         BRNE   loop_col                ; if it is under 40, keep looping
 
@@ -74,11 +67,17 @@ loop_col:
         BRN    start_loop              ; this makes an infinite loop
 
 ;--------------------------------------------------------------------
+;-  Subroutine: start_game
+;-
+;-  Flips the color of the monitor from black to white inifinitely.
+;- 
+;- Tweaked registers: r0,r6
+;--------------------------------------------------------------------
 
 start_game:
-        CALL   read_pixel
-        AND    r0, 0xFF
-        BREQ   draw_white
+        CALL   read_pixel              ; get current pixel color
+        AND    r0, 0xFF                ; if white, r0 will be 0xFF, otherwise it will be 0x00
+        BREQ   draw_white              ; flip the color of the pixel
         BRN    draw_black
 
 draw_white_or_black:
@@ -94,6 +93,15 @@ draw_black:
         MOV r6, 0x00
         CALL draw_dot
         RET
+;--------------------------------------------------------------------
+
+;--------------------------------------------------------------------
+;-  Subroutine: delay
+;-
+;-  Delays the CPU by a set amount of clock cycles.
+;- 
+;- Tweaked registers: r1,r2,r3
+;--------------------------------------------------------------------
 
 delay:
         MOV r1, 0xFF
@@ -101,18 +109,20 @@ d1:
         MOV r2, 0xFF
 d2:
         MOV r3, 0xFF
-        
+d3:
         SUB r3, 0x01
-        BRNE d2
+        BRNE d3
         SUB r2, 0x01
-        BRNE d1
+        BRNE d2
         SUB r1, 0x01
-        BRNE delay
+        BRNE d1
         RET
 
+;--------------------------------------------------------------------
 
 ;--------------------------------------------------------------------
 ;-  Subroutine: draw_horizontal_line
+;-  Author: SHANE KENT
 ;-
 ;-  Draws a horizontal line from (r8,r7) to (r9,r7) using color in r6
 ;-
@@ -135,9 +145,9 @@ draw_horiz1:
         RET
 ;--------------------------------------------------------------------
 
-
 ;---------------------------------------------------------------------
 ;-  Subroutine: draw_background
+;-  Author: SHANE KENT
 ;-
 ;-  Fills the 30x40 grid with one color using successive calls to 
 ;-  draw_horizontal_line subroutine. 
@@ -157,9 +167,10 @@ start:  MOV   r7,r13                   ; load current row count
         BRNE  start                    ; branch to draw more rows
         RET
 ;---------------------------------------------------------------------
-    
+
 ;---------------------------------------------------------------------
 ;- Subrountine: draw_dot
+;- Author: SHANE KENT
 ;- 
 ;- This subroutine draws a dot on the display the given coordinates: 
 ;- 
@@ -195,7 +206,7 @@ dd_add80:  OR    r5,0x80       ; set bit if needed
 ;---------------------------------------------------------------------
 ;- Subrountine: read_pixel
 ;- 
-;- This subroutine will read a pixel color from the 2k RAM: 
+;- This subroutine will read a current pixel color from the 2k RAM: 
 ;- 
 ;- (X,Y) = (r8,r7)
 ;- 

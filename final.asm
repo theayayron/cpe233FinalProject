@@ -181,10 +181,10 @@ read_pixel:
         AND   r5,0x3F       ; make sure top 2 bits cleared
         AND   r4,0x1F       ; make sure top 3 bits cleared
         LSR   r4            ; need to get the bot 2 bits of r4 into sA
-        BRCS  dd_add40      ; spend more time with alex
-                            ; he's pretty cute
-t1:     LSR   r4            ; and so are you
-                            ; we should go out sometime
+        BRCS  dd_add40      
+                            
+t1:     LSR   r4            
+
         BRCS  dd_add80
 
 dd_out: OUT   r5,VGA_LADD   ; write bot 8 address bits to register

@@ -26,6 +26,29 @@
 
 .EQU BG_COLOR       = 0x00             ; Background:  black
 
+; Two rows must be recorded at a time until the third row is reached, 
+; so that changes made to past pixels do not mess with the behavior
+; of future pixels
+
+; These 5 8-bit registers combine to represent 40 pixels in a row,
+; with each pixel representing a single bit. The LSB represents the 
+; left-most pixel, and the MSB represents the right-most pixel.
+.DEF ROWA_08 	= r21		
+.DEF ROWA_16	= r22
+.DEF ROWA_24    = r23
+.DEF ROWA_32    = r24
+.DEF ROWA_40	= r25
+	
+.DEF ROWB_08 	= r26
+.DEF ROWB_16	= r27
+.DEF ROWB_24    = r28
+.DEF ROWB_32    = r29
+.DEF ROWB_40	= r30
+	
+.DEF CURR_PIX 	= r31
+.DEF TEMP_Y		= r20
+
+
 ;r6 is used for color
 ;r7 is used for Y
 ;r8 is used for X
@@ -57,6 +80,10 @@ start_game:
         AND    r0, 0xFF
         BREQ   draw_white
         BRN    draw_black
+
+draw_white_or_black:
+		BRCS draw_white
+		BRCC draw_black
 
 draw_white:
         MOV r6, 0xFF
@@ -199,3 +226,86 @@ ll_add40:  OR    r5,0x40       ; set bit if needed
 ll_add80:  OR    r5,0x80       ; set bit if needed
            BRN   ll_out
 ; --------------------------------------------------------------------
+
+;---------------------------------------------------------------------
+;- Subrountine: out_row
+;- 
+;- This subroutine write out the new pixel vals for rowA, 
+;- then transfer the data in rowB to rowA and clear rowB
+;- 
+;- Tweaked registers: ROWA & ROWB (r21-r30)
+;---------------------------------------------------------------------
+out_row:
+		MOV 	TEMP_Y, r8			;; save row before going back
+		SUB 	r8, 0x02			;; go back two rows
+		MOV 	CURR_PIX, 0x08
+		CALL 	out_ROWA_08
+		MOV 	CURR_PIX, 0x08
+		CALL 	out_ROWA_16
+		MOV 	CURR_PIX, 0x08
+		CALL 	out_ROWA_24
+		MOV 	CURR_PIX, 0x08
+		CALL 	out_ROWA_32
+		MOV 	CURR_PIX, 0x08
+		CALL	out_ROWA_40
+		MOV 	r8, TEMP_Y			;; change r8 to value before subroutine
+		MOV 	r7, 0x00			;; reset x-coordinate
+		RET
+
+out_ROWA_08:
+		CLC
+		LSR 	ROWA_08
+		CALL 	draw_white_or_black
+
+		ADD 	r8, 0x01		; increment x-coordinate
+		SUB 	CURR_PIX, 0x01
+		BRNE 	out_ROWA_08
+		RET
+
+out_ROWA_16:
+		CLC
+		LSR 	ROWA_16
+		CALL 	draw_white_or_black
+
+		ADD 	r8, 0x01		; increment x-coordinate
+		SUB 	CURR_PIX, 0x01
+		BRNE 	out_ROWA_16
+		RET
+
+out_ROWA_24:
+		CLC
+		LSR 	ROWA_24
+		CALL 	draw_white_or_black
+
+		ADD 	r8, 0x01		; increment x-coordinate
+		SUB 	CURR_PIX, 0x01
+		BRNE 	out_ROWA_24
+		RET
+
+out_ROWA_32:
+		CLC
+		LSR 	ROWA_32
+		CALL 	draw_white_or_black
+
+		ADD 	r8, 0x01		; increment x-coordinate
+		SUB 	CURR_PIX, 0x01
+		BRNE 	out_ROWA_32
+		RET
+
+out_ROWA_40:
+		CLC
+		LSR 	ROWA_40
+		CALL 	draw_white_or_black
+
+		ADD 	r8, 0x01		; increment x-coordinate
+		SUB 	CURR_PIX, 0x01
+		BRNE 	out_ROWA_40
+		RET
+		
+transfer_BtoA:
+		MOV 	ROWA_08, ROWB_08
+		MOV		ROWA_16, ROWB_16
+		MOV		ROWA_24, ROWB_24
+		MOV		ROWA_32, ROWB_32
+		MOV		ROWA_40, ROWB_40
+		RET

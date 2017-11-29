@@ -7,16 +7,23 @@
 .CSEG
 .ORG 0x10
 
-.EQU VGA_HADD = 0x90
-.EQU VGA_LADD = 0x91
+.EQU VGA_HADD  = 0x90
+.EQU VGA_LADD  = 0x91
 .EQU VGA_COLOR = 0x92
 
-.EQU VGA_READ = 0x93
+.EQU VGA_READ  = 0x93
 
-.EQU SSEG = 0x81
-.EQU LEDS = 0x40
+.EQU SSEG      = 0x81
+.EQU LEDS      = 0x40
 
-.EQU BG_COLOR       = 0x00             ; Background:  black
+.EQU BG_COLOR  = 0x00             ; Background:  black
+
+;---------------------------------------------------------------------
+
+.DEF CUR_COLOR = r0               ; pixel color read from ram
+.DEF COLOR     = r6               ; color of pixel to write to address
+.DEF ROW       = r27              ; y coordinate
+.DEF COL       = r8               ; x coordinate
 
 ; Two rows must be recorded at a time until the third row is reached, 
 ; so that changes made to past pixels do not mess with the behavior
@@ -25,20 +32,20 @@
 ; These 5 8-bit registers combine to represent 40 pixels in a row,
 ; with each pixel representing a single bit. The LSB represents the 
 ; left-most pixel, and the MSB represents the right-most pixel.
-.DEF ROWA_08 	= r21		
-.DEF ROWA_16	= r22
+.DEF ROWA_08    = r21       
+.DEF ROWA_16    = r22
 .DEF ROWA_24    = r23
 .DEF ROWA_32    = r24
-.DEF ROWA_40	= r25
-	
-.DEF ROWB_08 	= r26
-.DEF ROWB_16	= r27
+.DEF ROWA_40    = r25
+    
+.DEF ROWB_08    = r26
+.DEF ROWB_16    = r27
 .DEF ROWB_24    = r28
 .DEF ROWB_32    = r29
-.DEF ROWB_40	= r30
-	
-.DEF CURR_PIX 	= r31
-.DEF TEMP_Y		= r20
+.DEF ROWB_40    = r30
+    
+.DEF CURR_PIX   = r31            ; loop counter for row manipulations
+.DEF TEMP_Y     = r20
 
 
 ;r6 is used for color
@@ -50,18 +57,18 @@
 init:   SEI
         CALL   draw_background         ; draw using default color
 start_loop:
-        MOV    r7, 0x00                ; generic Y coordinate
-        MOV    r8, 0x00                ; generic X coordinate
+        MOV    ROW, 0x00
+        MOV    COL, 0x00
 loop_row:
-        MOV    r8,0x00                 ; restart x coordinates
+        MOV    ROW,0x00                ; restart x coordinates
 loop_col:
         CALL   start_game
-        ADD    r8,0x01                 ; increment column count
-        CMP    r8,0x28                 ; check column is still under 40 (0x28)
+        ADD    COL, 0x01
+        CMP    COL, 0x28               ; check column is still under 40 (0x28)
         BRNE   loop_col                ; if it is under 40, keep looping
 
-        ADD    r7,0x01                 ; increment row count
-        CMP    r7,0x1E                 ; check row is still under 30 (0x1E)
+        ADD    ROW, 0x01
+        CMP    ROW, 0x1E               ; check row is still under 30 (0x1E)
         BRNE   loop_row                ; branch to draw more rows
         CALL   delay
         BRN    start_loop              ; this makes an infinite loop
@@ -76,22 +83,22 @@ loop_col:
 
 start_game:
         CALL   read_pixel              ; get current pixel color
-        AND    r0, 0xFF                ; if white, r0 will be 0xFF, otherwise it will be 0x00
+        AND    CUR_COLOR, 0xFF         ; if white, r0 will be 0xFF, otherwise it will be 0x00
         BREQ   draw_white              ; flip the color of the pixel
         BRN    draw_black
 
 draw_white_or_black:
-		BRCS draw_white
-		BRCC draw_black
+        BRCS   draw_white
+        BRCC   draw_black
 
 draw_white:
-        MOV r6, 0xFF
-        CALL draw_dot
+        MOV    COLOR, 0xFF
+        CALL   draw_dot
         RET
 
 draw_black:
-        MOV r6, 0x00
-        CALL draw_dot
+        MOV    COLOR, 0x00
+        CALL   draw_dot
         RET
 ;--------------------------------------------------------------------
 
@@ -241,82 +248,121 @@ ll_add80:  OR    r5,0x80       ; set bit if needed
 ;---------------------------------------------------------------------
 ;- Subrountine: out_row
 ;- 
-;- This subroutine write out the new pixel vals for rowA, 
+;- This subroutine writes out the new pixel colors for rowA, 
 ;- then transfer the data in rowB to rowA and clear rowB
 ;- 
 ;- Tweaked registers: ROWA & ROWB (r21-r30)
 ;---------------------------------------------------------------------
 out_row:
-		MOV 	TEMP_Y, r8			;; save row before going back
-		SUB 	r8, 0x02			;; go back two rows
-		MOV 	CURR_PIX, 0x08
-		CALL 	out_ROWA_08
-		MOV 	CURR_PIX, 0x08
-		CALL 	out_ROWA_16
-		MOV 	CURR_PIX, 0x08
-		CALL 	out_ROWA_24
-		MOV 	CURR_PIX, 0x08
-		CALL 	out_ROWA_32
-		MOV 	CURR_PIX, 0x08
-		CALL	out_ROWA_40
-		MOV 	r8, TEMP_Y			;; change r8 to value before subroutine
-		MOV 	r7, 0x00			;; reset x-coordinate
-		RET
+        MOV     TEMP_Y, r8          ;; save y coordinate before going back
+        SUB     r8, 0x02            ;; go back two rows
+        MOV     CURR_PIX, 0x08      ; a register can only hold 8 bits
+        CALL    out_ROWA_08
+        MOV     CURR_PIX, 0x08
+        CALL    out_ROWA_16
+        MOV     CURR_PIX, 0x08
+        CALL    out_ROWA_24
+        MOV     CURR_PIX, 0x08
+        CALL    out_ROWA_32
+        MOV     CURR_PIX, 0x08
+        CALL    out_ROWA_40
+        MOV     r8, TEMP_Y          ;; change r8 to value before subroutine
+        MOV     r7, 0x00            ;; reset x-coordinate
+        RET
 
 out_ROWA_08:
-		CLC
-		LSR 	ROWA_08
-		CALL 	draw_white_or_black
+        CLC
+        LSR     ROWA_08
+        CALL    draw_white_or_black
 
-		ADD 	r8, 0x01		; increment x-coordinate
-		SUB 	CURR_PIX, 0x01
-		BRNE 	out_ROWA_08
-		RET
+        ADD     COL, 0x01           ; increment x-coordinate
+        SUB     CURR_PIX, 0x01
+        BRNE    out_ROWA_08
+        RET
 
 out_ROWA_16:
-		CLC
-		LSR 	ROWA_16
-		CALL 	draw_white_or_black
+        CLC
+        LSR     ROWA_16
+        CALL    draw_white_or_black
 
-		ADD 	r8, 0x01		; increment x-coordinate
-		SUB 	CURR_PIX, 0x01
-		BRNE 	out_ROWA_16
-		RET
+        ADD     COL, 0x01           ; increment x-coordinate
+        SUB     CURR_PIX, 0x01      ; decrement register counter
+        BRNE    out_ROWA_16
+        RET
 
 out_ROWA_24:
-		CLC
-		LSR 	ROWA_24
-		CALL 	draw_white_or_black
+        CLC
+        LSR     ROWA_24
+        CALL    draw_white_or_black
 
-		ADD 	r8, 0x01		; increment x-coordinate
-		SUB 	CURR_PIX, 0x01
-		BRNE 	out_ROWA_24
-		RET
+        ADD     COL, 0x01            ; increment x-coordinate
+        SUB     CURR_PIX, 0x01
+        BRNE    out_ROWA_24
+        RET
 
 out_ROWA_32:
-		CLC
-		LSR 	ROWA_32
-		CALL 	draw_white_or_black
+        CLC
+        LSR     ROWA_32
+        CALL    draw_white_or_black
 
-		ADD 	r8, 0x01		; increment x-coordinate
-		SUB 	CURR_PIX, 0x01
-		BRNE 	out_ROWA_32
-		RET
+        ADD     COL, 0x01            ; increment x-coordinate
+        SUB     CURR_PIX, 0x01
+        BRNE    out_ROWA_32
+        RET
 
 out_ROWA_40:
-		CLC
-		LSR 	ROWA_40
-		CALL 	draw_white_or_black
+        CLC
+        LSR     ROWA_40
+        CALL    draw_white_or_black
 
-		ADD 	r8, 0x01		; increment x-coordinate
-		SUB 	CURR_PIX, 0x01
-		BRNE 	out_ROWA_40
-		RET
-		
+        ADD     COL, 0x01        ; increment x-coordinate
+        SUB     CURR_PIX, 0x01
+        BRNE    out_ROWA_40
+        RET
+        
 transfer_BtoA:
-		MOV 	ROWA_08, ROWB_08
-		MOV		ROWA_16, ROWB_16
-		MOV		ROWA_24, ROWB_24
-		MOV		ROWA_32, ROWB_32
-		MOV		ROWA_40, ROWB_40
-		RET
+        MOV     ROWA_08, ROWB_08
+        MOV     ROWA_16, ROWB_16
+        MOV     ROWA_24, ROWB_24
+        MOV     ROWA_32, ROWB_32
+        MOV     ROWA_40, ROWB_40
+        RET
+
+;---------------------------------------------------------------------
+;- Subrountine: calc_dot
+;- 
+;- Calculates whether a pixel will "live" or "die" based on how many
+;- living neighbors it has.
+;- 
+;- Tweaked registers: ROWA & ROWB (r21-r30), r10 (holds masked row),
+;- r11 (holds inverted COL coordinate), r12 (holds the count of neighbors)
+;---------------------------------------------------------------------
+
+calc_dot:
+        CMP     COL, 0x90
+        BRCS    calc_08
+        CMP     COL, 0x17
+        BRCS    calc_16
+        CMP     COL, 0x25
+        BRCS    calc_24
+        CMP     COL, 0x33
+        BRCS    calc_32
+        BRN     calc_24
+calc_08:
+        MOV     r10, ROWA_08    ; r10 is going to hold row a
+        MOV     r11, COL
+        EXOR    r11, 0xFF       ; invert the x coordinate
+        AND     r10, r11        ; mask everything so only the bit we care about is left
+        CALL    increment_neighbors
+        MOV     r10, ROWB_08
+        CLC
+
+
+; loops through every bit in a register and adds it to r12
+increment_neighbors: 
+        MOV     CURR_PIX, 0x08
+        LSR     r10
+        ADDC    r12, 0x00       ; add c flag to r12
+        SUB     CURR_PIX, 0x01
+        BRNE    increment_neighbors
+        RET

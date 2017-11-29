@@ -181,21 +181,21 @@ read_pixel:
         AND   r5,0x3F       ; make sure top 2 bits cleared
         AND   r4,0x1F       ; make sure top 3 bits cleared
         LSR   r4            ; need to get the bot 2 bits of r4 into sA
-        BRCS  dd_add40      
+        BRCS  ll_add40      
                             
-t1:     LSR   r4            
+l1:     LSR   r4            
 
-        BRCS  dd_add80
+        BRCS  ll_add80
 
-dd_out: OUT   r5,VGA_LADD   ; write bot 8 address bits to register
+ll_out: OUT   r5,VGA_LADD   ; write bot 8 address bits to register
         OUT   r4,VGA_HADD   ; write top 3 address bits to register
         IN    r0,VGA_READ
         RET
 
-dd_add40:  OR    r5,0x40       ; set bit if needed
+ll_add40:  OR    r5,0x40       ; set bit if needed
            CLC                  ; freshen bit
-           BRN   t1             
+           BRN   l1             
 
-dd_add80:  OR    r5,0x80       ; set bit if needed
-           BRN   dd_out
+ll_add80:  OR    r5,0x80       ; set bit if needed
+           BRN   ll_out
 ; --------------------------------------------------------------------

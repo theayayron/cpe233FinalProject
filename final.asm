@@ -237,12 +237,11 @@ read_pixel:
         BRCS  ll_add40      
                             
 l1:     LSR   TEMP_ROW            
-
         BRCS  ll_add80
 
-ll_out: OUT   TEMP_COL,VGA_LADD   ; write bot 8 address bits to register
-        OUT   TEMP_ROW,VGA_HADD   ; write top 3 address bits to register
-        IN    CUR_COLOR,VGA_READ
+ll_out:	OUT   r5, VGA_LADD   ; write bot 8 address bits to register
+        OUT   r4, VGA_HADD   ; write top 3 address bits to register
+        IN    r0, VGA_READ
         RET
 
 ll_add40:  OR    TEMP_COL,0x40    ; set bit if needed
@@ -251,6 +250,7 @@ ll_add40:  OR    TEMP_COL,0x40    ; set bit if needed
 
 ll_add80:  OR    TEMP_COL,0x80    ; set bit if needed
            BRN   ll_out
+
 ; --------------------------------------------------------------------
 
 ;---------------------------------------------------------------------
@@ -274,6 +274,7 @@ out_row:
         CALL    out_ROWA_32
         MOV     CURR_PIX, 0x08
         CALL    out_ROWA_40
+		CALL    transfer_BtoA
         MOV     r8, TEMP_Y          ;; change r8 to value before subroutine
         MOV     r7, 0x00            ;; reset x-coordinate
         RET

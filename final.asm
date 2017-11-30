@@ -401,6 +401,12 @@ transfer_BtoA:
         MOV     ROWA_24, ROWB_24
         MOV     ROWA_32, ROWB_32
         MOV     ROWA_40, ROWB_40
+
+        MOV     ROWB_08, 0x00          ; clear "current" row before doing any calculations
+        MOV     ROWB_16, 0x00
+        MOV     ROWB_24, 0x00
+        MOV     ROWB_32, 0x00
+        MOV     ROWB_40, 0x00
         RET
 ;---------------------------------------------------------------------
 

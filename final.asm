@@ -22,8 +22,10 @@
 
 .DEF CUR_COLOR = r0               ; pixel color read from ram
 .DEF COLOR     = r6               ; color of pixel to write to address
-.DEF ROW       = r27              ; y coordinate
+.DEF ROW       = r7               ; y coordinate
 .DEF COL       = r8               ; x coordinate
+.DEF TEMP_ROW  = r4
+.DEF TEMP_COL  = r5
 
 ; Two rows must be recorded at a time until the third row is reached, 
 ; so that changes made to past pixels do not mess with the behavior
@@ -47,6 +49,12 @@
 .DEF CURR_PIX   = r31            ; loop counter for row manipulations
 .DEF TEMP_Y     = r20
 
+.DEF CURR_ROW   = r10
+.DEF BIT_MASK   = r11
+.DEF NUM_NEIGH  = r12
+
+.DEF TOP_ROW    = r13
+.DEF BOT_ROW    = r14
 
 ;r6 is used for color
 ;r7 is used for Y
@@ -220,28 +228,28 @@ dd_add80:  OR    r5,0x80       ; set bit if needed
 ;- Tweaked registers: r4,r5
 ;---------------------------------------------------------------------
 read_pixel: 
-        MOV   r4,r7         ; copy Y coordinate
-        MOV   r5,r8         ; copy X coordinate
+        ;MOV   r4, ROW        ; copy Y coordinate
+        ;MOV   r5, COL        ; copy X coordinate
 
-        AND   r5,0x3F       ; make sure top 2 bits cleared
-        AND   r4,0x1F       ; make sure top 3 bits cleared
-        LSR   r4            ; need to get the bot 2 bits of r4 into sA
+        AND   TEMP_COL,0x3F       ; make sure top 2 bits cleared
+        AND   TEMP_ROW,0x1F       ; make sure top 3 bits cleared
+        LSR   TEMP_ROW            ; need to get the bot 2 bits of r4 into sA
         BRCS  ll_add40      
                             
-l1:     LSR   r4            
+l1:     LSR   TEMP_ROW            
 
         BRCS  ll_add80
 
-ll_out: OUT   r5,VGA_LADD   ; write bot 8 address bits to register
-        OUT   r4,VGA_HADD   ; write top 3 address bits to register
-        IN    r0,VGA_READ
+ll_out: OUT   TEMP_COL,VGA_LADD   ; write bot 8 address bits to register
+        OUT   TEMP_ROW,VGA_HADD   ; write top 3 address bits to register
+        IN    CUR_COLOR,VGA_READ
         RET
 
-ll_add40:  OR    r5,0x40       ; set bit if needed
-           CLC                  ; freshen bit
+ll_add40:  OR    TEMP_COL,0x40    ; set bit if needed
+           CLC                    ; freshen bit
            BRN   l1             
 
-ll_add80:  OR    r5,0x80       ; set bit if needed
+ll_add80:  OR    TEMP_COL,0x80    ; set bit if needed
            BRN   ll_out
 ; --------------------------------------------------------------------
 
@@ -315,7 +323,7 @@ out_ROWA_40:
         LSR     ROWA_40
         CALL    draw_white_or_black
 
-        ADD     COL, 0x01        ; increment x-coordinate
+        ADD     COL, 0x01            ; increment x-coordinate
         SUB     CURR_PIX, 0x01
         BRNE    out_ROWA_40
         RET
@@ -340,29 +348,114 @@ transfer_BtoA:
 
 calc_dot:
         CMP     COL, 0x90
-        BRCS    calc_08
+        BRCS    setup_08
         CMP     COL, 0x17
-        BRCS    calc_16
+        BRCS    setup_16
         CMP     COL, 0x25
-        BRCS    calc_24
+        BRCS    setup_24
         CMP     COL, 0x33
-        BRCS    calc_32
-        BRN     calc_24
-calc_08:
-        MOV     r10, ROWA_08    ; r10 is going to hold row a
-        MOV     r11, COL
-        EXOR    r11, 0xFF       ; invert the x coordinate
-        AND     r10, r11        ; mask everything so only the bit we care about is left
+        BRCS    setup_32
+        BRN     setup_40
+
+setup_08:
+        MOV     TOP_ROW, ROWA_08
+        MOV     BOT_ROW, ROWB_08
+        MOV     CURR_PIX, COL
+        BRN     calc_neighbors
+setup_16:
+        MOV     TOP_ROW, ROWA_16
+        MOV     BOT_ROW, ROWB_16
+        MOV     CURR_PIX, COL
+        SUB     CURR_PIX, 0x10
+        BRN     calc_neighbors
+setup_24:
+        MOV     TOP_ROW, ROWA_24
+        MOV     BOT_ROW, ROWB_24
+        MOV     CURR_PIX, COL
+        SUB     CURR_PIX, 0x18
+        BRN     calc_neighbors
+setup_32:
+        MOV     TOP_ROW, ROWA_32
+        MOV     BOT_ROW, ROWB_32
+        MOV     CURR_PIX, COL
+        SUB     CURR_PIX, 0x20
+        BRN     calc_neighbors
+setup_40:
+        MOV     TOP_ROW, ROWA_40
+        MOV     BOT_ROW, ROWB_40
+        MOV     CURR_PIX, COL
+        SUB     CURR_PIX, 0x28
+        BRN     calc_neighbors
+
+calc_neighbors:
+        MOV     CURR_ROW, TOP_ROW     ; start with above bit
+        MOV     BIT_MASK, 0x00        ; say we are trying to mask the third bit (r11 = 0x02)
+        SEC                           ; set carry flag
+create_mask_above:
+        LSL     BIT_MASK              ; shift left
+        SUB     CURR_PIX, 0x01
+        BRNE    create_mask_above
+        AND     CURR_ROW, BIT_MASK    ; clear all bits except the COlth bit
+        CALL    increment_neighbors   ; add it to NUM_NEIGH
+create_mask_ald:                   ; above left diagonal neighbor
+        MOV     CURR_ROW, TOP_ROW
+        CLC                           ; clear carry flag so that shift doesn't introduce any unwanted bits
+        LSL     BIT_MASK              
+        AND     CURR_ROW, BIT_MASK
         CALL    increment_neighbors
-        MOV     r10, ROWB_08
+create_mask_ard:                   ; above right diagonal neighbor
+        MOV     CURR_ROW, TOP_ROW
         CLC
+        LSR     BIT_MASK
+        CLC
+        LSR     BIT_MASK
+        AND     CURR_ROW, BIT_MASK
+        CALL    increment_neighbors
+create_mask_right:
+        MOV     CURR_ROW, BOT_ROW
+        AND     CURR_ROW, BIT_MASK
+        CALL    increment_neighbors
+create_mask_left:
+        MOV     CURR_ROW, BOT_ROW
+        CLC
+        LSR     BIT_MASK
+        CLC
+        LSR     BIT_MASK
+        AND     CURR_ROW, BIT_MASK
+        CALL    increment_neighbors
+create_mask_bottom:
+        MOV     TEMP_ROW, ROW
+        MOV     TEMP_COL, COL
+        ADD     TEMP_ROW, 0x01
+        CALL    read_pixel
+        CMP     CUR_COLOR, 0xFF
+        BRNE    create_mask_bld
+        ADD     NUM_NEIGH, 0x01
+create_mask_bld:
+        SUB    TEMP_COL, 0x01
+        CALL   read_pixel
+        CMP    CUR_COLOR, 0xFF
+        BRNE   create_mask_brd
+        ADD    NUM_NEIGH, 0x01
+create_mask_brd:
+        ADD    TEMP_COL, 0x02
+        CALL   read_pixel
+        CMP    CUR_COLOR, 0xFF
+        BRNE   end
+        ADD    NUM_NEIGH, 0x01 
+end:
+        RET
 
 
 ; loops through every bit in a register and adds it to r12
+; we're calling this on a masked register, so there should only be one bit that we care about,
+; but the rest are zeroes anyways so it doesn't matter if we add them, and we have no way of
+; knowing which location the bit we care about is at.
+; editing r14
 increment_neighbors: 
         MOV     CURR_PIX, 0x08
-        LSR     r10
-        ADDC    r12, 0x00       ; add c flag to r12
+        LSR     CURR_ROW
+        ADDC    NUM_NEIGH, 0x00       ; add c flag to r12
         SUB     CURR_PIX, 0x01
         BRNE    increment_neighbors
         RET

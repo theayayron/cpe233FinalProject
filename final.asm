@@ -262,9 +262,9 @@ ll_add80:  OR    TEMP_COL,0x80    ; set bit if needed
 ;- Tweaked registers: ROWA & ROWB (r21-r30)
 ;---------------------------------------------------------------------
 out_row:
-        MOV     TEMP_Y, r8          ;; save y coordinate before going back
-        SUB     r8, 0x02            ;; go back two rows
-        MOV     CURR_PIX, 0x08      ; a register can only hold 8 bits
+        MOV     TEMP_Y, r8          ;; save y coordinate before going back two rows
+        SUB     r8, 0x02            
+        MOV     CURR_PIX, 0x08      ;; count variable to iterate through eight bits
         CALL    out_ROWA_08
         MOV     CURR_PIX, 0x08
         CALL    out_ROWA_16
@@ -398,7 +398,7 @@ create_mask_above:
         BRNE    create_mask_above
         AND     CURR_ROW, BIT_MASK    ; clear all bits except the COlth bit
         CALL    increment_neighbors   ; add it to NUM_NEIGH
-create_mask_ald:                   ; above left diagonal neighbor
+create_mask_ald:                   	  ; above left diagonal neighbor
         MOV     CURR_ROW, TOP_ROW
         CLC                           ; clear carry flag so that shift doesn't introduce any unwanted bits
         LSL     BIT_MASK              

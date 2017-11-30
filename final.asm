@@ -83,7 +83,7 @@ start_loop:
         MOV    ROW, 0x00
         MOV    COL, 0x00
 loop_row:
-        MOV    ROW, 0x00                ; restart x coordinates
+        MOV    ROW, 0x00               ; restart x coordinates
 loop_col:
         CALL   start_game
         ADD    COL, 0x01
@@ -125,9 +125,9 @@ start_game:
 
         AND     CUR_COLOR, 0xFF         ; if white, r0 will be 0xFF, otherwise it will be 0x00
         BREQ    pixel_is_dead           ; pixel was black ("dead")
-        BRN     pixel_is_alive           ; pixel was white ("live")
+        BRN     pixel_is_alive          ; pixel was white ("live")
 pixel_is_dead:
-        CMP     NUM_NEIGH, 0x03          ; if a dead pixel has 3 neighbors, it will come to life
+        CMP     NUM_NEIGH, 0x03         ; if a dead pixel has 3 neighbors, it will come to life
         BREQ    create_pixel
         BRN     kill_pixel
 pixel_is_alive:
@@ -136,6 +136,24 @@ pixel_is_alive:
         CMP     NUM_NEIGH, 0x04         ; if a live pixel has more than 3 neighbors, it dies
         BRCC    kill_pixel
         BRN     create_pixel
+
+kill_pixel:
+        MOV     SET_PIX, 0x00
+        BRN     create_mask_setup
+create_pixel:
+        MOV     SET_PIX, 0x01
+        BRN     create_mask_setup
+create_mask_setup:
+        CALL    setup
+        MOV     BIT_MASK, 0x00
+        SEC
+create_mask:
+        LSL     BIT_MASK              ; shift left
+        SUB     CURR_PIX, 0x01
+        CLC                           ; clear so that only one bit is "on" in our mask
+        BRNE    create_mask
+        CALL    apply_mask
+        RET
 ;--------------------------------------------------------------------
 
 ;--------------------------------------------------------------------
@@ -170,35 +188,6 @@ draw_black:
 ;- Tweaked registers: SET_PIX, BIT_MASK, CURR_PIX
 ;---------------------------------------------------------------------
 
-kill_pixel:
-        MOV     SET_PIX, 0x00
-        CALl    setup
-        SEC
-        LSL     BIT_MASK              ; shift left
-        SUB     CURR_PIX, 0x01
-        BRNE    kill_pixel
-        EXOR    BIT_MASK, 0xFF        ; invert the mask
-        CALL    apply_mask
-        RET
-;--------------------------------------------------------------------
-
-;---------------------------------------------------------------------
-;- Subrountine: create_pixel
-;- 
-;- Sets the COLth "pixel" in a row while leaving all other bits
-;- unchanged.
-;- 
-;- Tweaked registers: SET_PIX, BIT_MASK, CURR_PIX
-;---------------------------------------------------------------------
-create_pixel:
-        MOV     SET_PIX, 0x01
-        CALl    setup
-        SEC
-        LSL     BIT_MASK              ; shift left
-        SUB     CURR_PIX, 0x01
-        BRNE    create_pixel
-        CALL    apply_mask
-        RET
 ;--------------------------------------------------------------------
 
 ;--------------------------------------------------------------------
@@ -215,7 +204,6 @@ create_pixel:
 ;--------------------------------------------------------------------
 
 setup:
-        MOV     BIT_MASK, 0x00
         CMP     COL, 0x08
         BRCS    setup_08
         CMP     COL, 0x10
@@ -270,6 +258,7 @@ apply_mask:
 apply_mask_08:
         CMP     SET_PIX, 0x01
         BREQ    set_08
+        EXOR    BIT_MASK, 0xFF        ; invert the mask
         AND     ROWB_08, BIT_MASK     ; clear the COLth bit and leave all others unchanged
         RET
 set_08:
@@ -278,6 +267,7 @@ set_08:
 apply_mask_16:
         CMP     SET_PIX, 0x01
         BREQ    set_16
+        EXOR    BIT_MASK, 0xFF        ; invert the mask
         AND     ROWB_16, BIT_MASK
         RET
 set_16:
@@ -286,6 +276,7 @@ set_16:
 apply_mask_24:
         CMP     SET_PIX, 0x01
         BREQ    set_24
+        EXOR    BIT_MASK, 0xFF        ; invert the mask
         AND     ROWB_24, BIT_MASK
         RET
 set_24:
@@ -294,6 +285,7 @@ set_24:
 apply_mask_32:
         CMP     SET_PIX, 0x01
         BREQ    set_32
+        EXOR    BIT_MASK, 0xFF        ; invert the mask
         AND     ROWB_32, BIT_MASK
         RET
 set_32:
@@ -302,6 +294,7 @@ set_32:
 apply_mask_40:
         CMP     SET_PIX, 0x01
         BREQ    set_40
+        EXOR    BIT_MASK, 0xFF        ; invert the mask
         AND     ROWB_40, BIT_MASK
         RET
 set_40:

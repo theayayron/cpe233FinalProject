@@ -15,6 +15,7 @@
 
 .EQU SSEG      = 0x81
 .EQU LEDS      = 0x40
+.EQU PAUSE_PLAY= 0x50
 
 .EQU BG_COLOR  = 0x00             ; Background:  black
 
@@ -58,13 +59,15 @@
 
 .DEF SET_PIX    = r15
 
+.DEF START_STOP = r10			 ; 0x00 for start, 0xFF for pausing
+
 ;r6 is used for color
 ;r7 is used for Y
 ;r8 is used for X
 ;r0 is used for pixelValue
 
 ;---------------------------------------------------------------------
-init:   SEI
+init:   SEI ;; might not need this
 
         MOV    ROWA_08, 0x00     
         MOV    ROWA_16, 0x00  
@@ -90,7 +93,7 @@ loop_col:
         CMP    COL, 0x28               ; check column is still under 40 (0x28)
         BRNE   loop_col                ; if it is under 40, keep looping
 
-        CALL   transfer_BtoA
+        CALL   transfer_BtoA	
 
         CMP    ROW, 0x01
         BRCS   loop_cont               ; if we are on the first row, don't save row A to RAM
@@ -104,7 +107,26 @@ loop_cont:
         CALL   out_row
 
         CALL   delay                   ; wait to start the next loop
-        BRN    start_loop              ; game plays indefinitely
+		IN     r10, PAUSE_PLAY  ; check to see if the game should be paused after the frame has been fully rendered
+		OR	   START_STOP, 0x00		   ; make sure we still want to keep playin 	
+        BRNE   pause_loop				
+		BRN	   start_loop              ; game plays if START_STOP = 0x00
+		
+;---------------------------------------------------------------------
+
+;--------------------------------------------------------------------
+;-  Subroutine: pause_loop
+;-
+;-  indefinitely polls PAUSE_PLAY input port for a change in r10
+;- 	and branches back to start_loop when r10 = 0x00 again
+;- Tweaked registers: r10 (START_STOP)
+;--------------------------------------------------------------------
+pause_loop:
+		IN 		r10, PAUSE_PLAY		; check to see if game should be resumed
+		OR 		START_STOP, 0x00
+		BREQ    start_loop
+		CALL 	delay               ; might not be needed, will need to test
+		BRN 	pause_loop
 
 ;---------------------------------------------------------------------
 
@@ -307,7 +329,7 @@ set_40:
 ;- Subrountine: out_row
 ;- 
 ;- This subroutine writes out the new pixel colors for rowA, 
-;- then transfer the data in rowB to rowA and clear rowB
+;- then transfer the data in rowB to rowA and clears rowB
 ;- 
 ;- Tweaked registers: ROWA & ROWB (r21-r30)
 ;---------------------------------------------------------------------
@@ -420,27 +442,6 @@ calc_neighbors:
         MOV     TEMP_COL, COL
         MOV     BIT_MASK, 0x00        ; say we are trying to mask the third bit (r11 = 0x02)
 create_mask_above:
-<<<<<<< HEAD
-        LSL     BIT_MASK              ; shift left
-        SUB     CURR_PIX, 0x01
-        BRNE    create_mask_above
-        AND     CURR_ROW, BIT_MASK    ; clear all bits except the COlth bit
-        CALL    increment_neighbors   ; add it to NUM_NEIGH
-create_mask_ald:                   	  ; above left diagonal neighbor
-        MOV     CURR_ROW, TOP_ROW
-        CLC                           ; clear carry flag so that shift doesn't introduce any unwanted bits
-        LSL     BIT_MASK              
-        AND     CURR_ROW, BIT_MASK
-        CALL    increment_neighbors
-create_mask_ard:                   ; above right diagonal neighbor
-        MOV     CURR_ROW, TOP_ROW
-        CLC
-        LSR     BIT_MASK
-        CLC
-        LSR     BIT_MASK
-        AND     CURR_ROW, BIT_MASK
-        CALL    increment_neighbors
-=======
         SUB     TEMP_ROW, 0x01
         BRCS    create_mask_right     ; if overflowed, top row is out of bounds
         CALL    read_pixel
@@ -462,7 +463,6 @@ create_mask_ard:                      ; above right diagonal neighbor
         CMP     CUR_COLOR, 0xFF
         BRNE    create_mask_right
         ADD     NUM_NEIGH, 0x01
->>>>>>> f5b9306561a33088bfe64ac8b9a34eddcb39614b
 create_mask_right:
         MOV     TEMP_ROW, ROW
         CALL    read_pixel

@@ -54,14 +54,9 @@
 .DEF BIT_MASK   = r11
 .DEF NUM_NEIGH  = r12
 
-.DEF TOP_ROW    = r13
-.DEF CUR_ROW    = r14
-
 .DEF SET_PIX    = r15
 
 .DEF START_STOP = r10            ; 0x00 for start, 0xFF for pausing
-
-.DEF LED_VAL    = r16
 
 ;r6 is used for color
 ;r7 is used for Y
@@ -84,15 +79,21 @@ init:
 
         CALL   draw_background
 
-        MOV    ROW, 0x0F              ; initialization
-        MOV    COL, 0x14
+        MOV    ROW, 0x25              ; initialization
+        MOV    COL, 0x1B
         MOV    COLOR, 0xFF
         CALL   draw_dot
-        ADD    ROW, 0x01
+        ADD    COL, 0x01
+        CALL   draw_dot
+        ADD    COL, 0x01
         CALL   draw_dot
         ADD    ROW, 0x01
+        MOV    COL, 0x1B
         CALL   draw_dot
+        ADD    ROW, 0x01
+        ADD    COL, 0x01
 
+        CALL   delay
 start_loop:
         MOV    ROW, 0x00
 loop_row:
@@ -113,13 +114,13 @@ loop_cont:
         CMP    ROW, 0x1E               ; check row is still under 30 (0x1E)
         BRNE   loop_row                ; branch to draw more rows
                                        ; we have looped throught the entire monitor
-        CALL   transfer_BtoA           ; we still have to write the bottom row to RAM
         CALL   out_row
 
         CALL   delay                   ; wait to start the next loop
         IN     r10, PAUSE_PLAY         ; check to see if the game should be paused after the frame has been fully rendered
         OR     START_STOP, 0x00        ; make sure we still want to keep playin     
-        BRNE   pause_loop               
+        BRNE   pause_loop           
+
         BRN    start_loop              ; game plays if START_STOP = 0x00
         
 ;---------------------------------------------------------------------
@@ -151,9 +152,11 @@ pause_loop:
 start_game:
         MOV     TEMP_ROW, ROW           ; these two lines are necessary bc read_pixel only reads pixel value from these coordinates
         MOV     TEMP_COL, COL
-        CALL    read_pixel              ; get current pixel color
-
         CALL    calc_neighbors
+
+        MOV     TEMP_ROW, ROW
+        MOV     TEMP_COL, COL
+        CALL    read_pixel              ; get current pixel color
 
         AND     CUR_COLOR, 0xFF         ; if white, r0 will be 0xFF, otherwise it will be 0x00
         BREQ    pixel_is_dead           ; pixel was black ("dead")
@@ -250,22 +253,27 @@ setup:
 
 setup_08:
         MOV     CURR_PIX, COL
+        ADD     CURR_PIX, 0x01
         RET
 setup_16:
         MOV     CURR_PIX, COL
         SUB     CURR_PIX, 0x08
+        ADD     CURR_PIX, 0x01
         RET
 setup_24:
         MOV     CURR_PIX, COL
         SUB     CURR_PIX, 0x10
+        ADD     CURR_PIX, 0x01
         RET
 setup_32:
         MOV     CURR_PIX, COL
         SUB     CURR_PIX, 0x18
+        ADD     CURR_PIX, 0x01
         RET
 setup_40:
         MOV     CURR_PIX, COL
         SUB     CURR_PIX, 0x20
+        ADD     CURR_PIX, 0x01
         RET
 ;--------------------------------------------------------------------
 
@@ -279,9 +287,6 @@ setup_40:
 ;--------------------------------------------------------------------
 
 apply_mask:
-        OR      LED_VAL, 0x01
-        OUT     r16, LEDS
-
         CMP     COL, 0x08
         BRCS    apply_mask_08
         CMP     COL, 0x10
@@ -297,9 +302,6 @@ apply_mask_08:
         BREQ    set_08
         EXOR    BIT_MASK, 0xFF        ; invert the mask
         AND     ROWB_08, BIT_MASK     ; clear the COLth bit and leave all others unchanged
-        
-        OR      LED_VAL, 0x02
-        OUT     r16, LEDS
         RET
 set_08:
         OR      ROWB_08, BIT_MASK     ; set the COLth bit and leave all others unchanged
@@ -352,13 +354,10 @@ set_40:
 ;- Tweaked registers: ROWA & ROWB (r21-r30)
 ;---------------------------------------------------------------------
 out_row:
-        OR      LED_VAL, 0x04
-        OUT     r16, LEDS
-
         MOV     TEMP_Y, ROW          ; save y coordinate before going back
         MOV     COL, 0x00
         SUB     ROW, 0x01            ; go back two rows
-        MOV     CURR_PIX, 0x08       ; a register can only hold 8 bits
+        MOV     r3, 0x08             ; a register can only hold 8 bits
 
         CALL    out_ROWA_08
         MOV     r3, 0x08
@@ -371,9 +370,6 @@ out_row:
         CALL    out_ROWA_40
         MOV     ROW, TEMP_Y          ; change r8 to value before subroutine
         MOV     COL, 0x00            ; reset x-coordinate
-        
-        OR      LED_VAL, 0x08
-        OUT     r16, LEDS
         RET
 out_ROWA_08:
         CLC
@@ -463,7 +459,7 @@ transfer_BtoA:
 ;---------------------------------------------------------------------
 
 calc_neighbors:
-        MOV     BIT_MASK, 0x00        ; say we are trying to mask the third bit (r11 = 0x02)
+        MOV     NUM_NEIGH, 0x00
 create_mask_above:
         MOV     TEMP_ROW, ROW
         MOV     TEMP_COL, COL
@@ -687,6 +683,8 @@ l1:     LSR   r4
 ll_out: OUT   r5, VGA_LADD   ; write bot 8 address bits to register
         OUT   r4, VGA_HADD   ; write top 3 address bits to register
         IN    r0, VGA_READ
+        MOV   TEMP_ROW, ROW
+        MOV   TEMP_COL, COL
         RET
 
 ll_add40:

@@ -79,6 +79,15 @@ init:   SEI
         MOV    ROWB_40, 0x00  
 
         CALL   draw_background
+
+        MOV    ROW, 0x0F              ; initialization
+        MOV    COL, 0x14
+        MOV    COLOR, 0xFF
+        CALL   draw_dot
+        ADD    ROW, 0x01
+        CALL   draw_dot
+        ADD    ROW, 0x01
+        CALL   draw_dot
 start_loop:
         MOV    ROW, 0x00
         MOV    COL, 0x00

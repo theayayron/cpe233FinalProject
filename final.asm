@@ -15,6 +15,7 @@
 
 .EQU SSEG      = 0x81
 .EQU LEDS      = 0x40
+.EQU PAUSE_PLAY= 0x50
 
 .EQU BG_COLOR  = 0x00             ; Background:  black
 
@@ -58,13 +59,15 @@
 
 .DEF SET_PIX    = r15
 
+.DEF START_STOP = r10			 ; 0x00 for start, 0xFF for pausing
+
 ;r6 is used for color
 ;r7 is used for Y
 ;r8 is used for X
 ;r0 is used for pixelValue
 
 ;---------------------------------------------------------------------
-init:   SEI
+init:   SEI ;; might not need this
 
         MOV    ROWA_08, 0x00     
         MOV    ROWA_16, 0x00  
@@ -99,7 +102,7 @@ loop_col:
         CMP    COL, 0x28               ; check column is still under 40 (0x28)
         BRNE   loop_col                ; if it is under 40, keep looping
 
-        CALL   transfer_BtoA
+        CALL   transfer_BtoA	
 
         CMP    ROW, 0x01
         BRCS   loop_cont               ; if we are on the first row, don't save row A to RAM
@@ -113,7 +116,26 @@ loop_cont:
         CALL   out_row
 
         CALL   delay                   ; wait to start the next loop
-        BRN    start_loop              ; game plays indefinitely
+		IN     r10, PAUSE_PLAY  ; check to see if the game should be paused after the frame has been fully rendered
+		OR	   START_STOP, 0x00		   ; make sure we still want to keep playin 	
+        BRNE   pause_loop				
+		BRN	   start_loop              ; game plays if START_STOP = 0x00
+		
+;---------------------------------------------------------------------
+
+;--------------------------------------------------------------------
+;-  Subroutine: pause_loop
+;-
+;-  indefinitely polls PAUSE_PLAY input port for a change in r10
+;- 	and branches back to start_loop when r10 = 0x00 again
+;- Tweaked registers: r10 (START_STOP)
+;--------------------------------------------------------------------
+pause_loop:
+		IN 		r10, PAUSE_PLAY		; check to see if game should be resumed
+		OR 		START_STOP, 0x00
+		BREQ    start_loop
+		CALL 	delay               ; might not be needed, will need to test
+		BRN 	pause_loop
 
 ;---------------------------------------------------------------------
 
@@ -316,7 +338,7 @@ set_40:
 ;- Subrountine: out_row
 ;- 
 ;- This subroutine writes out the new pixel colors for rowA, 
-;- then transfer the data in rowB to rowA and clear rowB
+;- then transfer the data in rowB to rowA and clears rowB
 ;- 
 ;- Tweaked registers: ROWA & ROWB (r21-r30)
 ;---------------------------------------------------------------------
@@ -324,6 +346,7 @@ out_row:
         MOV     TEMP_Y, ROW          ; save y coordinate before going back
         SUB     ROW, 0x02            ; go back two rows
         MOV     CURR_PIX, 0x08       ; a register can only hold 8 bits
+
         CALL    out_ROWA_08
         MOV     CURR_PIX, 0x08
         CALL    out_ROWA_16

@@ -79,21 +79,120 @@ init:
 
         CALL   draw_background
 
-        MOV    ROW, 0x25              ; initialization
-        MOV    COL, 0x1B
-        MOV    COLOR, 0xFF
-        CALL   draw_dot
-        ADD    COL, 0x01
-        CALL   draw_dot
-        ADD    COL, 0x01
-        CALL   draw_dot
-        ADD    ROW, 0x01
-        MOV    COL, 0x1B
-        CALL   draw_dot
-        ADD    ROW, 0x01
-        ADD    COL, 0x01
+        ;MOV    ROW, 0x              ; initialization
+        ;MOV    COL, 0x00
+        ;MOV    COLOR, 0xFF
+        ;CALL   draw_dot
+        ;ADD    COL, 0x01
+        ;CALL   draw_dot
+        ;ADD    COL, 0x01
+        ;CALL   draw_dot
+        ;ADD    ROW, 0x01
+        ;MOV    COL, 0x1B
+        ;CALL   draw_dot
+        ;ADD    ROW, 0x01
+        ;ADD    COL, 0x01
+        ;CALL   draw_dot
 
-        CALL   delay
+        ;MOV     ROW, 0x1D
+        ;MOV     COL, 0x00
+        ;MOV     COLOR, 0xFF
+        ;CALL    draw_dot
+
+        ;MOV     COL, 0x1D
+        ;CALL    draw_dot
+
+        ;MOV     ROW, 0x00
+        ;CALL    draw_dot
+
+        MOV     COLOR, 0xFF
+
+        MOV     ROW, 0x0A
+        MOV     r9, 0x0C
+        MOV     COL, 0x12
+        CALL    draw_vertical_line
+
+        MOV     ROW, 0x08
+        MOV     COL, 0x0F
+        MOV     r9, 0x11
+        CALL    draw_horizontal_line
+
+        MOV     COL, 0x0D
+        MOV     ROW, 0x0A
+        MOV     r9, 0x0C
+        CALL   draw_vertical_line
+
+        MOV    ROW, 0x0D
+        MOV    COL, 0x0F
+        MOV    r9, 0x11
+        CALL   draw_horizontal_line
+
+        ;------------------
+
+        MOV     ROW, 0x0A
+        MOV     r9, 0x0C
+        MOV     COL, 0x14
+        CALL    draw_vertical_line
+
+        MOV     ROW, 0x08
+        MOV     COL, 0x15
+        MOV     r9, 0x17
+        CALL    draw_horizontal_line
+
+        MOV     COL, 0x19
+        MOV     ROW, 0x0A
+        MOV     r9, 0x0C
+        CALL   draw_vertical_line
+
+        MOV    ROW, 0x0D
+        MOV    COL, 0x15
+        MOV    r9, 0x17
+        CALL   draw_horizontal_line
+
+        ;--------------------
+
+        MOV     ROW, 0x0F
+        MOV     COL, 0x0F
+        MOV     r9, 0x11
+        CALL    draw_horizontal_line
+
+        MOV     ROW, 0x10
+        MOV     r9, 0x12
+        MOV     COL, 0x12
+        CALL    draw_vertical_line
+
+        MOV     ROW, 0x14
+        MOV     COL, 0x0F
+        MOV     r9, 0x11
+        CALL    draw_horizontal_line
+
+        MOV     COL, 0x0D
+        MOV     ROW, 0x10
+        MOV     r9, 0x12
+        CALL    draw_vertical_line
+
+        ;--------------------
+
+        MOV     ROW, 0x0F
+        MOV     COL, 0x15
+        MOV     r9, 0x17
+        CALL    draw_horizontal_line
+
+        MOV     ROW, 0x10
+        MOV     r9, 0x12
+        MOV     COL, 0x14
+        CALL    draw_vertical_line
+
+        MOV     ROW, 0x14
+        MOV     COL, 0x15
+        MOV     r9, 0x17
+        CALL    draw_horizontal_line
+
+        MOV     COL, 0x19
+        MOV     ROW, 0x10
+        MOV     r9, 0x12
+        CALL    draw_vertical_line
+
 start_loop:
         MOV    ROW, 0x00
 loop_row:
@@ -107,14 +206,14 @@ loop_col:
         CMP    ROW, 0x01
         BRCS   loop_cont               ; if we are on the first row, don't save row A to RAM
         CALL   out_row                 ; save row A to RAM
-
-        CALL   transfer_BtoA
 loop_cont:
+        CALL   transfer_BtoA
         ADD    ROW, 0x01
         CMP    ROW, 0x1E               ; check row is still under 30 (0x1E)
         BRNE   loop_row                ; branch to draw more rows
                                        ; we have looped throught the entire monitor
         CALL   out_row
+        CALL   transfer_BtoA
 
         CALL   delay                   ; wait to start the next loop
         IN     r10, PAUSE_PLAY         ; check to see if the game should be paused after the frame has been fully rendered
@@ -622,6 +721,30 @@ start:  MOV   ROW, r13                 ; load current row count
         BRNE  start                    ; branch to draw more rows
         RET
 ;---------------------------------------------------------------------
+
+;---------------------------------------------------------------------
+;-  Subroutine: draw_vertical_line
+;-
+;-  Draws a horizontal line from (r8,r7) to (r8,r9) using color in r6
+;-
+;-  Parameters:
+;-   r8  = x-coordinate
+;-   r7  = starting y-coordinate
+;-   r9  = ending y-coordinate
+;-   r6  = color used for line
+;- 
+;- Tweaked registers: r7,r9
+;--------------------------------------------------------------------
+draw_vertical_line:
+         ADD    r9,0x01
+
+draw_vert1:          
+         CALL   draw_dot
+         ADD    r7,0x01
+         CMP    r7,R9
+         BRNE   draw_vert1
+         RET
+;--------------------------------------------------------------------
 
 ;---------------------------------------------------------------------
 ;- Subrountine: draw_dot

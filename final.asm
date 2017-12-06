@@ -15,28 +15,28 @@
 
 .EQU SSEG      = 0x81
 .EQU LEDS      = 0x40
-.EQU PAUSE_PLAY= 0x50
+.EQU PAUSE_PLAY= 0x50             ; port for pause/play button
 
 .EQU BG_COLOR  = 0x00             ; Background:  black
 
 ;---------------------------------------------------------------------
 
-.DEF CUR_COLOR = r0               ; pixel color read from ram
+.DEF CUR_COLOR = r0               ; pixel color read from RAM
 .DEF COLOR     = r6               ; color of pixel to write to address
 
 .DEF ROW       = r7               ; y coordinate
 .DEF COL       = r8               ; x coordinate
-.DEF TEMP_ROW  = r4
-.DEF TEMP_COL  = r5
+.DEF TEMP_ROW  = r4               ; temporary y coordinate
+.DEF TEMP_COL  = r5               ; temporary x coordinate
 
 ; Two rows must be recorded at a time until the third row is reached, 
 ; so that changes made to past pixels do not mess with the behavior
 ; of future pixels
 
-; These 5 8-bit registers combine to represent 40 pixels in a row,
+; These 5 8-bit registers combine to represent 40 pixels (one row of the VGA),
 ; with each pixel representing a single bit. The LSB represents the 
 ; left-most pixel, and the MSB represents the right-most pixel.
-.DEF ROWA_08    = r21       
+.DEF ROWA_08    = r21
 .DEF ROWA_16    = r22
 .DEF ROWA_24    = r23
 .DEF ROWA_32    = r24
@@ -54,14 +54,9 @@
 .DEF BIT_MASK   = r11
 .DEF NUM_NEIGH  = r12
 
-.DEF SET_PIX    = r15
+.DEF SET_PIX    = r15            ; stores whether pixel should be killed or created
 
 .DEF START_STOP = r10            ; 0x00 for start, 0xFF for pausing
-
-;r6 is used for color
-;r7 is used for Y
-;r8 is used for X
-;r0 is used for pixelValue
 
 ;---------------------------------------------------------------------
 init:   
@@ -79,31 +74,7 @@ init:
 
         CALL   draw_background
 
-        ;MOV    ROW, 0x              ; initialization
-        ;MOV    COL, 0x00
-        ;MOV    COLOR, 0xFF
-        ;CALL   draw_dot
-        ;ADD    COL, 0x01
-        ;CALL   draw_dot
-        ;ADD    COL, 0x01
-        ;CALL   draw_dot
-        ;ADD    ROW, 0x01
-        ;MOV    COL, 0x1B
-        ;CALL   draw_dot
-        ;ADD    ROW, 0x01
-        ;ADD    COL, 0x01
-        ;CALL   draw_dot
-
-        ;MOV     ROW, 0x1D
-        ;MOV     COL, 0x00
-        ;MOV     COLOR, 0xFF
-        ;CALL    draw_dot
-
-        ;MOV     COL, 0x1D
-        ;CALL    draw_dot
-
-        ;MOV     ROW, 0x00
-        ;CALL    draw_dot
+        ; begin drawing exploder pattern
 
         MOV     COLOR, 0xFF
 
@@ -193,6 +164,8 @@ init:
         MOV     r9, 0x12
         CALL    draw_vertical_line
 
+        ; end drawing exploder pattern
+
 start_loop:
         MOV    ROW, 0x00
 loop_row:
@@ -217,7 +190,7 @@ loop_cont:
 
         CALL   delay                   ; wait to start the next loop
         IN     r10, PAUSE_PLAY         ; check to see if the game should be paused after the frame has been fully rendered
-        OR     START_STOP, 0x00        ; make sure we still want to keep playin     
+        OR     START_STOP, 0x00        ; check the user wants to keep playing
         BRNE   pause_loop           
 
         BRN    start_loop              ; game plays if START_STOP = 0x00
@@ -227,15 +200,16 @@ loop_cont:
 ;--------------------------------------------------------------------
 ;-  Subroutine: pause_loop
 ;-
-;-  indefinitely polls PAUSE_PLAY input port for a change in r10
+;-  Indefinitely polls PAUSE_PLAY input port for a change in r10
 ;-  and branches back to start_loop when r10 = 0x00 again
-;- Tweaked registers: r10 (START_STOP)
+;-
+;-  Tweaked registers: r10 (START_STOP)
 ;--------------------------------------------------------------------
 pause_loop:
         IN      r10, PAUSE_PLAY     ; check to see if game should be resumed
         OR      START_STOP, 0x00
         BREQ    start_loop
-        CALL    delay               ; might not be needed, will need to test
+        CALL    delay
         BRN     pause_loop
 
 ;---------------------------------------------------------------------
@@ -245,15 +219,16 @@ pause_loop:
 ;-
 ;-  Implements Conway's Game of Life in our RAT processor.
 ;- 
-;- Tweaked registers: TEMP_ROW, TEMP_COL
+;- Tweaked registers: r4 (TEMP_ROW), r5 (TEMP_COL), r0 (CUR_COLOR)
+;-                    r15 (SET_PIX)
 ;--------------------------------------------------------------------
 
 start_game:
         MOV     TEMP_ROW, ROW           ; these two lines are necessary bc read_pixel only reads pixel value from these coordinates
         MOV     TEMP_COL, COL
-        CALL    calc_neighbors
+        CALL    calc_neighbors          ; this will change values of temp x&y...
 
-        MOV     TEMP_ROW, ROW
+        MOV     TEMP_ROW, ROW           ; ... so reset them before calling read_pixel
         MOV     TEMP_COL, COL
         CALL    read_pixel              ; get current pixel color
 
@@ -272,21 +247,21 @@ pixel_is_alive:
         BRN     create_pixel
 
 kill_pixel:
-        MOV     SET_PIX, 0x00
+        MOV     SET_PIX, 0x00           ; pixel should be turned black
         BRN     create_mask_setup
 create_pixel:
-        MOV     SET_PIX, 0x01
+        MOV     SET_PIX, 0x01           ; pixel should be turned white
         BRN     create_mask_setup
-create_mask_setup:
+create_mask_setup:                      ; now we create a bit mask to affect the desired pixel in the registers
         CALL    setup
         MOV     BIT_MASK, 0x00
         SEC
 create_mask:
-        LSL     BIT_MASK              ; shift left
+        LSL     BIT_MASK                ; LSB stores left-most pixel (0), so we start from there and shift left
         CMP     CURR_PIX, 0x01
-        BRCS    end
+        BRCS    end                     ; if loop counter was 0, stop shifting
         SUB     CURR_PIX, 0x01
-        CLC                           ; clear so that only one bit is "on" in our mask
+        CLC                             ; clear so that only one bit is "on" in our mask
         BRNE    create_mask
         CALL    apply_mask
         RET
@@ -296,9 +271,8 @@ create_mask:
 ;-  Subroutine: draw_white_or_black
 ;-
 ;-  Helper subroutine for out_row. Writes a specific pixel to the RAM.
-;-  (X, Y) = r8 (ROW), r7 (COL)
 ;- 
-;- Tweaked registers: TEMP_ROW, TEMP_COL
+;- Tweaked registers: r6 (COLOR)
 ;--------------------------------------------------------------------
 
 
@@ -315,17 +289,6 @@ draw_black:
         RET
 ;--------------------------------------------------------------------
 
-;---------------------------------------------------------------------
-;- Subrountine: kill_pixel
-;- 
-;- Clears the COLth "pixel" in a row while leaving all other bits
-;- unchanged.
-;- 
-;- Tweaked registers: SET_PIX, BIT_MASK, CURR_PIX
-;---------------------------------------------------------------------
-
-;--------------------------------------------------------------------
-
 ;--------------------------------------------------------------------
 ;-  Subroutine: setup
 ;-
@@ -336,7 +299,7 @@ draw_black:
 ;-  We must subtract 32, which is the "starting" position of ROWB_40,
 ;-  from 35 (our 0x23) in order to get the proper loop counter value.
 ;- 
-;- Tweaked registers: BIT_MASK, CURR_PIX
+;- Tweaked registers: r11 (BIT_MASK), r31 (CURR_PIX)
 ;--------------------------------------------------------------------
 
 setup:
@@ -382,7 +345,8 @@ setup_40:
 ;-  Applies the mask to either clear or set a bit in the appropriate
 ;-  register in ROW B
 ;- 
-;- Tweaked registers: ROWB_08, ROWB_16, ROWB_24, ROWB_32, ROWB_40
+;- Tweaked registers: r26 (ROWB_08), r27 (ROWB_16), r28 (ROWB_24),
+;-                    r29 (ROWB_32), r30 (ROWB_40)
 ;--------------------------------------------------------------------
 
 apply_mask:
@@ -398,17 +362,17 @@ apply_mask:
 
 apply_mask_08:
         CMP     SET_PIX, 0x01
-        BREQ    set_08
-        EXOR    BIT_MASK, 0xFF        ; invert the mask
-        AND     ROWB_08, BIT_MASK     ; clear the COLth bit and leave all others unchanged
+        BREQ    set_08                  ; if we want to clear the bit...
+        EXOR    BIT_MASK, 0xFF          ; invert the mask
+        AND     ROWB_08, BIT_MASK       ; clear the COLth bit and leave all others unchanged
         RET
 set_08:
-        OR      ROWB_08, BIT_MASK     ; set the COLth bit and leave all others unchanged
+        OR      ROWB_08, BIT_MASK       ; set the COLth bit and leave all others unchanged
         RET
 apply_mask_16:
         CMP     SET_PIX, 0x01
-        BREQ    set_16
-        EXOR    BIT_MASK, 0xFF        ; invert the mask
+        BREQ    set_16                  ; if we want to clear the bit...
+        EXOR    BIT_MASK, 0xFF          ; invert the mask
         AND     ROWB_16, BIT_MASK
         RET
 set_16:
@@ -416,8 +380,8 @@ set_16:
         RET
 apply_mask_24:
         CMP     SET_PIX, 0x01
-        BREQ    set_24
-        EXOR    BIT_MASK, 0xFF        ; invert the mask
+        BREQ    set_24                  ; if we want to clear the bit...
+        EXOR    BIT_MASK, 0xFF          ; invert the mask
         AND     ROWB_24, BIT_MASK
         RET
 set_24:
@@ -425,8 +389,8 @@ set_24:
         RET
 apply_mask_32:
         CMP     SET_PIX, 0x01
-        BREQ    set_32
-        EXOR    BIT_MASK, 0xFF        ; invert the mask
+        BREQ    set_32                  ; if we want to clear the bit...
+        EXOR    BIT_MASK, 0xFF          ; invert the mask
         AND     ROWB_32, BIT_MASK
         RET
 set_32:
@@ -434,8 +398,8 @@ set_32:
         RET
 apply_mask_40:
         CMP     SET_PIX, 0x01
-        BREQ    set_40
-        EXOR    BIT_MASK, 0xFF        ; invert the mask
+        BREQ    set_40                  ; if we want to clear the bit...
+        EXOR    BIT_MASK, 0xFF          ; invert the mask
         AND     ROWB_40, BIT_MASK
         RET
 set_40:
@@ -450,13 +414,13 @@ set_40:
 ;- This subroutine writes out the new pixel colors for rowA, 
 ;- then transfer the data in rowB to rowA and clears rowB
 ;- 
-;- Tweaked registers: ROWA & ROWB (r21-r30)
+;- Tweaked registers: r1-r25 (ROWA), r26-r30 (ROWB)
 ;---------------------------------------------------------------------
 out_row:
-        MOV     TEMP_Y, ROW          ; save y coordinate before going back
+        MOV     TEMP_Y, ROW             ; save y coordinate before going back
         MOV     COL, 0x00
-        SUB     ROW, 0x01            ; go back two rows
-        MOV     r3, 0x08             ; a register can only hold 8 bits
+        SUB     ROW, 0x01               ; go back two rows
+        MOV     r3, 0x08                ; a register can only hold 8 bits
 
         CALL    out_ROWA_08
         MOV     r3, 0x08
@@ -467,15 +431,15 @@ out_row:
         CALL    out_ROWA_32
         MOV     r3, 0x08
         CALL    out_ROWA_40
-        MOV     ROW, TEMP_Y          ; change r8 to value before subroutine
-        MOV     COL, 0x00            ; reset x-coordinate
+        MOV     ROW, TEMP_Y              ; change r8 to value before subroutine
+        MOV     COL, 0x00                ; reset x-coordinate
         RET
 out_ROWA_08:
         CLC
         LSR     ROWA_08
         CALL    draw_white_or_black
-
-        ADD     COL, 0x01            ; increment x-coordinate
+  
+        ADD     COL, 0x01                ; increment x-coordinate
         SUB     r3, 0x01
         BRNE    out_ROWA_08
         RET
@@ -484,8 +448,8 @@ out_ROWA_16:
         LSR     ROWA_16
         CALL    draw_white_or_black
 
-        ADD     COL, 0x01            ; increment x-coordinate
-        SUB     r3, 0x01       ; decrement register counter
+        ADD     COL, 0x01                ; increment x-coordinate
+        SUB     r3, 0x01                 ; decrement register counter
         BRNE    out_ROWA_16
         RET
 out_ROWA_24:
@@ -493,7 +457,7 @@ out_ROWA_24:
         LSR     ROWA_24
         CALL    draw_white_or_black
 
-        ADD     COL, 0x01            ; increment x-coordinate
+        ADD     COL, 0x01                ; increment x-coordinate
         SUB     r3, 0x01
         BRNE    out_ROWA_24
         RET
@@ -502,7 +466,7 @@ out_ROWA_32:
         LSR     ROWA_32
         CALL    draw_white_or_black
 
-        ADD     COL, 0x01            ; increment x-coordinate
+        ADD     COL, 0x01                ; increment x-coordinate
         SUB     r3, 0x01
         BRNE    out_ROWA_32
         RET
@@ -511,7 +475,7 @@ out_ROWA_40:
         LSR     ROWA_40
         CALL    draw_white_or_black
 
-        ADD     COL, 0x01            ; increment x-coordinate
+        ADD     COL, 0x01                ; increment x-coordinate
         SUB     r3, 0x01
         BRNE    out_ROWA_40
         RET
@@ -528,7 +492,7 @@ out_ROWA_40:
 ;- ROW B to ROW A, and then store the next row in ROW A and resume
 ;- calculations.
 ;- 
-;- Tweaked registers: ROWA & ROWB (r21-r30)
+;- Tweaked registers: r1-r25 (ROWA), r26-r30 (ROWB)
 ;---------------------------------------------------------------------
         
 transfer_BtoA:
@@ -538,7 +502,7 @@ transfer_BtoA:
         MOV     ROWA_32, ROWB_32
         MOV     ROWA_40, ROWB_40
 
-        MOV     ROWB_08, 0x00          ; clear "current" row before doing any calculations
+        MOV     ROWB_08, 0x00            ; clear "current" row before doing any calculations
         MOV     ROWB_16, 0x00
         MOV     ROWB_24, 0x00
         MOV     ROWB_32, 0x00
@@ -564,35 +528,35 @@ create_mask_above:
         MOV     TEMP_COL, COL
         SUB     TEMP_ROW, 0x01
 
-        BRCS    create_mask_right     ; if overflowed, top row is out of bounds
+        BRCS    create_mask_right        ; if overflowed, top row is out of bounds
         CALL    read_pixel
         CMP     CUR_COLOR, 0xFF
         BRNE    create_mask_ald
         ADD     NUM_NEIGH, 0x01 
-create_mask_ald:                      ; above left diagonal neighbor
+create_mask_ald:                         ; above left diagonal neighbor
         MOV     TEMP_ROW, ROW
         MOV     TEMP_COL, COL   
         SUB     TEMP_ROW, 0x01
         SUB     TEMP_COL, 0x01
 
-        BRCS    create_mask_ard       ; bounds check
+        BRCS    create_mask_ard          ; bounds check
         CALL    read_pixel
         CMP     CUR_COLOR, 0xFF
         BRNE    create_mask_ard
         ADD     NUM_NEIGH, 0x01
-create_mask_ard:                      ; above right diagonal neighbor
+create_mask_ard:                          ; above right diagonal neighbor
         MOV     TEMP_ROW, ROW
         MOV     TEMP_COL, COL   
         SUB     TEMP_ROW, 0x01
         ADD     TEMP_COL, 0x01
 
-        CMP     TEMP_COL, 0x28        ; check if it's gone over 40
+        CMP     TEMP_COL, 0x28            ; check if it's gone over 40
         BRCC    create_mask_left
         CALL    read_pixel
         CMP     CUR_COLOR, 0xFF
         BRNE    create_mask_right
         ADD     NUM_NEIGH, 0x01
-create_mask_right:
+create_mask_right:                        ; immediate right neighbor
         MOV     TEMP_ROW, ROW
         MOV     TEMP_COL, COL   
         ADD     TEMP_COL, 0x01
@@ -601,7 +565,7 @@ create_mask_right:
         CMP     CUR_COLOR, 0xFF
         BRNE    create_mask_left
         ADD     NUM_NEIGH, 0x01
-create_mask_left:
+create_mask_left:                         ; immediate left neighbor
         MOV     TEMP_ROW, ROW
         MOV     TEMP_COL, COL   
         SUB     TEMP_COL, 0x01
@@ -611,18 +575,18 @@ create_mask_left:
         CMP     CUR_COLOR, 0xFF
         BRNE    create_mask_bottom
         ADD     NUM_NEIGH, 0x01
-create_mask_bottom:
+create_mask_bottom:                       ; immediate bottom neighbor
         MOV     TEMP_ROW, ROW
         MOV     TEMP_COL, COL   
         ADD     TEMP_ROW, 0x01
 
-        CMP     TEMP_ROW, 0x1E
+        CMP     TEMP_ROW, 0x1E            ; check the row hasn't gone over 29 (0x1E)
         BRCC    end
         CALL    read_pixel
         CMP     CUR_COLOR, 0xFF
         BRNE    create_mask_bld
         ADD     NUM_NEIGH, 0x01
-create_mask_bld:
+create_mask_bld:                           ; bottom left diagonal neighbor
         MOV     TEMP_ROW, ROW
         MOV     TEMP_COL, COL   
         ADD     TEMP_ROW, 0x01
@@ -633,7 +597,7 @@ create_mask_bld:
         CMP     CUR_COLOR, 0xFF
         BRNE    create_mask_brd
         ADD     NUM_NEIGH, 0x01
-create_mask_brd:
+create_mask_brd:                            ; botton right diagonal neighbor
         MOV     TEMP_ROW, ROW
         MOV     TEMP_COL, COL   
         ADD     TEMP_ROW, 0x01
@@ -686,10 +650,10 @@ d3:
 ;-   r9  = ending x-coordinate
 ;-   r6  = color used for line
 ;- 
-;- Tweaked registers: r8,r9
+;- Tweaked registers: r8 (COL), r9
 ;--------------------------------------------------------------------
 draw_horizontal_line:
-        ADD    r9, 0x01          ; go from r8 to r15 inclusive
+        ADD    r9, 0x01                  ; go from r8 to r15 inclusive
 
 draw_horiz1:
         CALL   draw_dot
@@ -706,19 +670,19 @@ draw_horiz1:
 ;-  Fills the 30x40 grid with one color using successive calls to 
 ;-  draw_horizontal_line subroutine. 
 ;- 
-;-  Tweaked registers: r13,r7,r8,r9
+;-  Tweaked registers: r13, r7 (ROW), r8 (COL), r9
 ;----------------------------------------------------------------------
 draw_background: 
-        MOV   COLOR, BG_COLOR              ; use default color
-        MOV   r13, 0x00                 ; r13 keeps track of rows
-start:  MOV   ROW, r13                 ; load current row count 
+        MOV   COLOR, BG_COLOR            ; use default color
+        MOV   r13, 0x00                  ; r13 keeps track of rows
+start:  MOV   ROW, r13                   ; load current row count 
         MOV   COL, 0x00                  ; restart x coordinates
         MOV   r9, 0x27 
- 
+
         CALL  draw_horizontal_line
-        ADD   r13, 0x01                 ; increment row count
-        CMP   r13, 0x1E                 ; see if more rows to draw
-        BRNE  start                    ; branch to draw more rows
+        ADD   r13, 0x01                  ; increment row count
+        CMP   r13, 0x1E                  ; see if more rows to draw
+        BRNE  start                      ; branch to draw more rows
         RET
 ;---------------------------------------------------------------------
 
@@ -733,7 +697,7 @@ start:  MOV   ROW, r13                 ; load current row count
 ;-   r9  = ending y-coordinate
 ;-   r6  = color used for line
 ;- 
-;- Tweaked registers: r7,r9
+;- Tweaked registers: r7 (ROW), r9
 ;--------------------------------------------------------------------
 draw_vertical_line:
          ADD    r9,0x01
@@ -754,31 +718,31 @@ draw_vert1:
 ;- 
 ;- (X,Y) = (r5,r4)  with a color stored in r6  
 ;- 
-;- Tweaked registers: r4,r5
+;- Tweaked registers: r1, r2
 ;---------------------------------------------------------------------
 draw_dot: 
-        MOV   r1, ROW       ; copy Y coordinate
-        MOV   r2, COL       ; copy X coordinate
+        MOV   r1, ROW                    ; copy Y coordinate
+        MOV   r2, COL                    ; copy X coordinate
 
-        AND   r2,0x3F        ; make sure top 2 bits cleared
-        AND   r1,0x1F        ; make sure top 3 bits cleared
-        LSR   r1             ; need to get the bot 2 bits of r4 into sA
+        AND   r2,0x3F                    ; make sure top 2 bits cleared
+        AND   r1,0x1F                    ; make sure top 3 bits cleared
+        LSR   r1                         ; need to get the bot 2 bits of r4 into sA
         BRCS  dd_add40
 t1:     LSR   r1
         BRCS  dd_add80
 
-dd_out: OUT   r2, VGA_LADD   ; write bot 8 address bits to register
-        OUT   r1, VGA_HADD   ; write top 3 address bits to register
-        OUT   r6, VGA_COLOR  ; write data to frame buffer
+dd_out: OUT   r2, VGA_LADD               ; write bot 8 address bits to register
+        OUT   r1, VGA_HADD               ; write top 3 address bits to register
+        OUT   r6, VGA_COLOR              ; write data to frame buffer
         RET
 
 dd_add40:
-        OR    r2, 0x40       ; set bit if needed
-        CLC                  ; freshen bit
+        OR    r2, 0x40                   ; set bit if needed
+        CLC                              ; freshen bit
         BRN   t1             
 
 dd_add80: 
-        OR    r2, 0x80       ; set bit if needed
+        OR    r2, 0x80                   ; set bit if needed
         BRN   dd_out
 ; --------------------------------------------------------------------
 
@@ -786,36 +750,32 @@ dd_add80:
 ;- Subrountine: read_pixel
 ;- 
 ;- This subroutine will read a current pixel color from the 2k RAM: 
+;- (X,Y) = (r4,r5)
 ;- 
-;- (X,Y) = (r8,r7)
-;- 
-;- Tweaked registers: r4,r5
+;- Tweaked registers: r4 (TEMP_ROW) ,r5 (TEMP_COL)
 ;---------------------------------------------------------------------
 read_pixel: 
-        ;MOV   r4, ROW             ; copy Y coordinate
-        ;MOV   r5, COL             ; copy X coordinate
-
-        AND   r5, 0x3F       ; make sure top 2 bits cleared
-        AND   r4, 0x1F       ; make sure top 3 bits cleared
-        LSR   r4             ; need to get the bot 2 bits of r4 into sA
+        AND   r5, 0x3F                   ; make sure top 2 bits cleared
+        AND   r4, 0x1F                   ; make sure top 3 bits cleared
+        LSR   r4                         ; need to get the bot 2 bits of r4 into sA
         BRCS  ll_add40      
-                            
+
 l1:     LSR   r4            
         BRCS  ll_add80
 
-ll_out: OUT   r5, VGA_LADD   ; write bot 8 address bits to register
-        OUT   r4, VGA_HADD   ; write top 3 address bits to register
+ll_out: OUT   r5, VGA_LADD               ; write bot 8 address bits to register
+        OUT   r4, VGA_HADD               ; write top 3 address bits to register
         IN    r0, VGA_READ
         MOV   TEMP_ROW, ROW
         MOV   TEMP_COL, COL
         RET
 
 ll_add40:
-        OR    r5, 0x40       ; set bit if needed
-        CLC                        ; freshen bit
+        OR    r5, 0x40                   ; set bit if needed
+        CLC                              ; freshen bit
         BRN   l1             
 
 ll_add80:
-        OR    r5, 0x80        ; set bit if needed
+        OR    r5, 0x80                   ; set bit if needed
         BRN   ll_out
 ; --------------------------------------------------------------------
